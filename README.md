@@ -1,7 +1,7 @@
 # LOSH-Occupancy-and-Habitat-Associations
 Using machine learning to predict Loggerhead Shrike (LOSH) occupancy in the Mississippi Delta based on measured habitat characteristics
-
-###R Code
+____________________________________________
+### R Code
 
 #Check dataset formatting and contents
 
