@@ -83,71 +83,6 @@ table(glm.pred , test$Use)
 (21+4) / 109 #test error rate 0.2293578
 
 
-##############################
-
-### LDA Analysis
-
-############ LDA Analysis Training Fit #############
-
-
-#Create Train and Test Sets
-
-set.seed(2) #same results for random results
-sample <- sample.int(n = nrow(LOSH_occupancy), size = floor(.70*nrow(LOSH_occupancy)), replace = F)
-train <- LOSH_occupancy[sample, ]
-test  <- LOSH_occupancy[-sample, ]
-str(train)
-nrow(train)
-nrow(test)
-
-#Convert Use to factor
-
-train$Use<- as.factor(train$Use)
-str(train)
-
-test$Use<- as.factor(test$Use)
-str(test)
-
-
-library(MASS)
-
-lda.shrike <- lda(Use ~ WireL + NatPerch + NatPerchH + AnthroPerch + AnthroPerchH + 
-                    Ditches + DitchW + GrassW + GrassH, data = train)
-
-lda.shrike
-
-
-#Model Error Rate Prediction Test (original formatting)
-
-lda.pred <- predict(lda.shrike, test)
-names(lda.pred)
-
-lda.class <- lda.pred$class
-table(lda.class, test$Use)
-
-(82+1) / 109  #correct prediction rate
-(22+3) / 109 #test error rate
-
-
-#Model Error Rate Prediction Test (formatted as for LR)
-
-lda.probs <- predict(lda.shrike, test, type = "response")
-contrasts(test$Use)
-
-lda.pred <- rep("No", 109)  #Last number (72) is number of records in test set (so 20% of data - 360*0.20)
-lda.pred[lda.probs = 1] <- "Yes"
-table(lda.pred , test$Use)
-
-nrow(test)
-
-(86+1) / 109  #correct prediction rate
-(22+0) / 109 #test error rate
-
-
-
-
-
-
 
 
 ##############################
@@ -219,25 +154,6 @@ anova(M1, M2, M3, test = "F")
 
 #####################
 
-#Create Train and Test Sets
-
-set.seed(2) #same results for random results
-sample <- sample.int(n = nrow(LOSH_occupancy), size = floor(.70*nrow(LOSH_occupancy)), replace = F)
-train <- LOSH_occupancy[sample, ]
-test  <- LOSH_occupancy[-sample, ]
-str(train)
-nrow(train)
-nrow(test)
-
-#Convert Use to factor
-
-train$Use<- as.factor(train$Use)
-str(train)
-
-test$Use<- as.factor(test$Use)
-str(test)
-
-
 ##GAM Training Fit:
 
 gam2.shrike <- gam(Use ~ s(WireL, df=3) + 
@@ -273,65 +189,34 @@ par(mfrow = c(4, 4))
 plot(gam2.shrike, se = TRUE , col = "blue")
 
 
+##Variable Prediction Plots
+
+library(ggeffects)
+
+plot(ggpredict(glm.shrike, terms = "WireL"))
+
+plot(ggpredict(gam2.shrike, terms = "WireL"))
+
+plot(ggpredict(gam2.shrike, terms = "AnthroPerch"))
+
+plot(ggpredict(gam2.shrike, terms = "AnthroPerchH"))
+
+
 
 
 ##############################
 
-### Decision Tree
+### Random Forest (RF)
 
-############ Decision Tree Training Fit #############
-
-library(tree)
-
-tree.shrike <- tree(Use ~ WireL + NatPerch + NatPerchH + AnthroPerch + AnthroPerchH + 
-                      Ditches + DitchW + GrassW + GrassH, data = train)
-
-summary(tree.shrike)
-
-tree.pred <- predict(tree.shrike, test, type="class")
-
-table(tree.pred, test$Use)
-
-
-#Tree pruning - cf.tree determines optimal branching of the trees and performs cross validation
-
-set.seed(2)
-
-#cross validation results
-cv.shrike <- cv.tree(tree.shrike, FUN = prune.misclass)  #specify to prune based on mis-classification rates not something like deviance
-
-names(cv.shrike) #k cost parameter used to tune, do not worry about that
-cv.shrike
-
-plot(cv.shrike$size, cv.shrike$dev, type="b") #can see deviance is lowest at optimal tree size
-plot(cv.shrike$k, cv.shrike$dev, type = "b")
-
-
-#prune tree based on optimal size
-
-prune.shrike <- prune.misclass(tree.shrike, best=3)
-
-plot(prune.shrike)
-
-summary(prune.shrike)
-
-## Tree Misclassification Rate
-
-tree.pred <- predict(prune.shrike, test, type="class")
-
-table(tree.pred, test$Use)
-
-(81+1)/109  #Successful prediction rate
-1 - (81+1)/109 #test error/misclassification rate
-
-
-#### Random Forest
+############ Random Forest Training Fit #############
 
 library(randomForest)
 
-set.seed (2)
+set.seed (87)
 rf.shrike <- randomForest(Use ~ WireL + NatPerch + NatPerchH + AnthroPerch + AnthroPerchH + 
                             Ditches + DitchW + GrassW + GrassH, na.action=na.roughfix, data=train, importance = TRUE)
+
+## RF Misclassification Rate
 
 tree.pred <- predict(rf.shrike, test, type="class")
 
@@ -348,8 +233,6 @@ tree.pred <- rep("No", 109)
 tree.pred[tree.probs = 1] <- "Yes"
 table(tree.pred , test$Use)
 
-
-
 #Importance Plot
 
 imp<-importance(rf.shrike)
@@ -360,6 +243,60 @@ par(mar=c(5,8,4,1)+.1)
 barplot(sort(Gini,decreasing=TRUE), horiz=TRUE, las=1, xlim=c(0,100), col = "chocolate2", xlab="Importance (Gini Index Decrease)")
 
 
+imp<-importance(prune.shrike)
+
+Gini<-imp[,"MeanDecreaseGini"]
+
+par(mar=c(5,8,4,1)+.1)
+barplot(sort(Gini,decreasing=TRUE), horiz=TRUE, las=1, xlim=c(0,100), col = "chocolate2", xlab="Importance (Gini Index Decrease)")
+
+
+
+#Extract tree for visualization
+
+library(randomForest)
+library(reprtree)
+
+install.packages("devtools")
+library(devtools)
+devtools::install_github('araastat/reprtree')
+library(reprtree)
+
+single.tree <- getTree(rf.shrike, k=1, labelVar=TRUE)
+
+reprtree:::plot.getTree(rf.shrike)
+
+#8 Nodes max with wireL as top variable
+
+set.seed (8)
+rf.shrike <- randomForest(Use ~ WireL + NatPerch + NatPerchH + AnthroPerch + AnthroPerchH + 
+                            Ditches + DitchW + GrassW + GrassH, na.action=na.roughfix, maxnodes=8, data=train, importance = TRUE)
+
+reprtree:::plot.getTree(rf.shrike)
+
+#12 Nodes max with wireL as top variable
+
+set.seed (8)
+rf.shrike <- randomForest(Use ~ WireL + NatPerch + NatPerchH + AnthroPerch + AnthroPerchH + 
+                            Ditches + DitchW + GrassW + GrassH, na.action=na.roughfix, 
+                          maxnodes=12, data=train, importance = TRUE)
+
+reprtree:::plot.getTree(rf.shrike)
+
+
+#12 Nodes max with wireL as top variable
+
+set.seed (27)
+rf.shrike <- randomForest(Use ~ WireL + NatPerch + NatPerchH + AnthroPerch + AnthroPerchH + 
+                            Ditches + DitchW + GrassW + GrassH, na.action=na.roughfix, 
+                          maxnodes=12, data=train, importance = TRUE)
+
+reprtree:::plot.getTree(rf.shrike)
+
+plot.getTree(rf.shrike, node.info=TRUE)
+
+
+rpart.plot(plot.getTree(rf.shrike), extra = 106)
 
 ## Tree Visualization
 
@@ -367,6 +304,17 @@ library(rpart)
 library(rpart.plot)
 fit <- rpart(Use ~ WireL + NatPerch + NatPerchH + AnthroPerch + AnthroPerchH + 
                Ditches + DitchW + GrassW + GrassH, data = train, method = 'class')
+
+fit <- rpart(randomForest(Use ~ WireL + NatPerch + NatPerchH + AnthroPerch + AnthroPerchH + 
+               Ditches + DitchW + GrassW + GrassH, na.action=na.roughfix, data=train, importance = TRUE))
+
+
 rpart.plot(fit, extra = 106)
+
+rpart.plot(single.tree, extra = 106)
+
+
+plot(tree.shrike)
+text(tree.shrike, pretty=0)
 
 
